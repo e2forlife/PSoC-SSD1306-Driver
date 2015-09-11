@@ -1,19 +1,5 @@
-# PSoC-FreeRTOS
-Implementation of FreeRTOS as a PSoC Creator Component
+# PSoC-SSD1306-Driver
+Implementation of a Driver for the SSD1306 Display controller as a PSoC Creator Component
 
-This project is an implementation of the FreeRTOS (http://www.freertos.org) RTOS
-as a component that can be dragged on to a PSoC Creator schematic and configured
-from the configuration dialog windws. Additionally, a group of "Driver" APIs are
-being developed to provide a thread-safe (task-safe) way to access the unique
-programmable perepherals within any PSoC implementation.
+This project is a general driver for the implementing a display using the SSD1306 driver chip to your projects. Using the driver requires external components to the driver, such as I2C or I/O pins to be used to interface with the control.
 
-I have also included the E2ForLife CLI shell, which was designed to work with
-FreeRTOS, and replace the FreeRTOS+CLI extension to FreeRTOS. The CLI shell is
-an easy to use command line interface useful as a test/debug/maintenance interface
-or as the primary interface to your application.
-
-
-FreeRTOS is developed, maintainted, and owned solely by Real Time Engineers ltd.
-and is not associated with E2ForLife. Please see the FreeRTOS licensing information
-http://www.freertos.org/a00114.html for more informations regarding using FreeRTOS
-in your own applications.
