@@ -18,20 +18,21 @@ int main()
 	uint8 c;
 	char str[21];
 	
+	CyGlobalIntEnable; /* Enable global interrupts. */
+
 	I2C_Start();
 	OLED_RST_Write(0);
 	CyDelay(10);
 	OLED_RST_Write(1);
 	CyDelay( 200 );
 	
-	CyGlobalIntEnable; /* Enable global interrupts. */
 	
 	/*
 	 * Initialize the I2C port and the diplay driver
 	 */
 	SSD1306_Start();
 	SSD1306_Refresh();
-	SSD1306_PrintString("{tall}Hello!\n{wide}Hello\n{normal}Hola!");
+	SSD1306_PrintString("{big}HI {tall}Hello!\n{wide}Hello\n{normal}Hola!");
 	c = 0;
     for(;;)
     {

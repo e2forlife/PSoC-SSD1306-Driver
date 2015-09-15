@@ -32,7 +32,10 @@
 #include "ssd1306.h"
 
 #include "i2c.h"
-#include "i2c_i2c.h"
+
+#if defined(CY_SCB_I2C_H)
+	#include "i2c_i2c.h"
+#endif
 
 /* ------------------------------------------------------------------------ */
 /* Global Component Data */
@@ -119,31 +122,33 @@ void SSD1306_SendCommand( uint8 command )
 	 */
 	cmd[0] = 0x00;
 	cmd[1] = command;
+#if defined(CY_SCB_I2C_H)
 	I2C_I2CMasterWriteBuf(SSD1306_I2C_ADDRESS,&cmd[0],2,I2C_I2C_MODE_COMPLETE_XFER);
+
 
 	while (0u == (I2C_I2CMasterStatus() & I2C_I2C_MSTAT_WR_CMPLT))
     {
 		/* TODO: Merge Region for Idle processing when sending commands */
     }
 	I2C_I2CMasterClearStatus();
+#else	
+	I2C_MasterWriteBuf(SSD1306_I2C_ADDRESS,&cmd[0],2,I2C_MODE_COMPLETE_XFER);
+	while(I2C_MasterStatus() & I2C_MSTAT_XFER_INP);
+	
+	I2C_MasterClearStatus();
+#endif
+
+
 }
 /* ------------------------------------------------------------------------ */
 void SSD1306_Refresh( void )
 {
-	int idx;
-	uint32 result;
-	
-//	SSD1306_SendCommand(0x21);
-//	SSD1306_SendCommand(0);
-//	SSD1306_SendCommand(SSD1306_DISPLAY_WIDTH-1);
-//	SSD1306_SendCommand(0x22);
-//	SSD1306_SendCommand(0);
-//	SSD1306_SendCommand( 3 );
 	/*
 	 * redraw the screen using the I2C interface to send the buffer to the
 	 * display VRAM.
 	 */
 	SSD1306_Raster[0] = 0x40;
+#if defined(CY_SCB_I2C_H)
 	I2C_I2CMasterWriteBuf(SSD1306_I2C_ADDRESS,&SSD1306_Raster[0],SSD1306_RASTER_SIZE+1,I2C_I2C_MODE_COMPLETE_XFER);
 
 	while (0u == (I2C_I2CMasterStatus() & I2C_I2C_MSTAT_WR_CMPLT))
@@ -151,6 +156,17 @@ void SSD1306_Refresh( void )
 		/* TODO: Merge Region for Idle processing when sending commands */
     }
 	I2C_I2CMasterClearStatus();	
+#else
+	int idx;
+	
+	I2C_MasterSendStart(SSD1306_I2C_ADDRESS, 0);
+	for(idx = 0;idx<SSD1306_RASTER_SIZE+1;++idx) {
+		I2C_MasterWriteByte( SSD1306_Raster[idx] );
+	}
+	I2C_MasterSendStop();
+#endif
+
+
 }
 /* ------------------------------------------------------------------------ */
 void SSD1306_ScrollUp(int lines)
