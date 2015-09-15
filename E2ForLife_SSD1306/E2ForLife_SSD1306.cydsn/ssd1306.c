@@ -30,22 +30,17 @@
 #include <stdio.h>
 
 #include "ssd1306.h"
+
 #include "i2c.h"
 #include "i2c_i2c.h"
 
 /* ------------------------------------------------------------------------ */
 /* Global Component Data */
 uint8 SSD1306_initVar = 0u;
-extern uint8 I2C_initVar;
+//extern uint8 I2C_initVar;
 
 /* The display raster buffer used to refresh the display during "vblank" */
-/* 
- * Index 0 is the control byte and will always be 0x40. Graphics data in the
- * raster buffer starts at index 1.  This allows the buffer to be transmitted
- * using the send buffer API calls rather than single bytes, thus improving
- * display refresh update speeds.
- */
-uint8 SSD1306_Raster[ SSD1306_RASTER_SIZE + 1 ];
+uint8 SSD1306_Raster[ SSD1306_RASTER_SIZE + 1];
 /*
  * When using Text output, these variables define the present row and column
  * of the display output. These can be manipulated by the PrintString function
@@ -69,6 +64,7 @@ const uint8 SSD1306_DisplayInit[] =
  */
 #define SSD1306_INIT_SIZE     ( 24 )
 /* ------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------ */
 void SSD1306_Init( void )
 {
 	int idx;
@@ -77,20 +73,13 @@ void SSD1306_Init( void )
 	 * Clear the Raster buffer when starting up (essentially, erase
 	 * the display contents, and reset the cursor to the top left position.
 	 */
-	memset( (void*)SSD1306_Raster,0xFF,SSD1306_RASTER_SIZE );
+	memset( (void*)&SSD1306_Raster[1],0,SSD1306_RASTER_SIZE );
 	/*
 	 * initialize the starting position of the character output cursor
 	 * so that characters are drawn in nice rows adn columns
 	 */
 	SSD1306_CursorX = 0;
 	SSD1306_CursorY = 0;
-	/*
-	 * If the I2C Component has not yet been initialized, start it here
-	 * so that the following commands will execute
-	 */
-	if (I2C_initVar == 0u) {
-		I2C_Start();
-	}
 	
 	/*
 	 * Send Initialization table to the display
@@ -136,21 +125,45 @@ void SSD1306_SendCommand( uint8 command )
     {
 		/* TODO: Merge Region for Idle processing when sending commands */
     }
+	I2C_I2CMasterClearStatus();
 }
 /* ------------------------------------------------------------------------ */
 void SSD1306_Refresh( void )
 {
+	int idx;
+	uint32 result;
+	
+//	SSD1306_SendCommand(0x21);
+//	SSD1306_SendCommand(0);
+//	SSD1306_SendCommand(SSD1306_DISPLAY_WIDTH-1);
+//	SSD1306_SendCommand(0x22);
+//	SSD1306_SendCommand(0);
+//	SSD1306_SendCommand( 3 );
 	/*
 	 * redraw the screen using the I2C interface to send the buffer to the
 	 * display VRAM.
 	 */
-	SSD1306_Raster[0] = 0x40; /* set command to data */
+	SSD1306_Raster[0] = 0x40;
 	I2C_I2CMasterWriteBuf(SSD1306_I2C_ADDRESS,&SSD1306_Raster[0],SSD1306_RASTER_SIZE+1,I2C_I2C_MODE_COMPLETE_XFER);
-	
+
 	while (0u == (I2C_I2CMasterStatus() & I2C_I2C_MSTAT_WR_CMPLT))
     {
 		/* TODO: Merge Region for Idle processing when sending commands */
     }
+	I2C_I2CMasterClearStatus();	
+}
+/* ------------------------------------------------------------------------ */
+void SSD1306_ScrollUp(int lines)
+{
+	int cnt;
+	
+	for(cnt=0;cnt<lines;++cnt) {	
+		memcpy((void*)&SSD1306_Raster[1], 
+			(void*)&SSD1306_Raster[SSD1306_DISPLAY_WIDTH+1],
+			SSD1306_RASTER_SIZE-SSD1306_DISPLAY_WIDTH);
+		
+		memset((void*)&SSD1306_Raster[(((SSD1306_DISPLAY_HEIGHT/8)-1)*SSD1306_DISPLAY_WIDTH)+1],0,SSD1306_DISPLAY_WIDTH);
+	}
 }
 /* ------------------------------------------------------------------------ */
 void SSD1306_PutChar( char c )
@@ -162,14 +175,14 @@ void SSD1306_PutChar( char c )
 	 * Render a character on the display, then update the cursor location
 	 * to the next available space.
 	 */
-	if (SSD1306_CursorY > 3) {
+	if (SSD1306_CursorY > (SSD1306_DISPLAY_HEIGHT/8)) {
 		/*
 		 * The new character is giong to display below the bottom of the
 		 * display, so, scroll the display up one line, and clear the bottom
 		 * row. Lastly, set the cursor y location to the bottom row.
 		 */
-		/* todo: Scroll up raster data */
-		SSD1306_CursorY = 3;
+		SSD1306_ScrollUp(1);
+		SSD1306_CursorY = (SSD1306_DISPLAY_HEIGHT/8)-1;
 	}
 	/* 
 	 * Check for CR and NL characters. These are non-printable (even though
@@ -195,6 +208,7 @@ void SSD1306_PutChar( char c )
 		if ( (c < 127) || ((c>126)&&(SSD1306_FONT_INCLUDE_EXT256!=0)) ) {
 			#if (SSD1306_FONT_INCLUDE_CTRL_CHARS == 0)
 				/* Fix braces, bar, and tilde */
+				#if (SSD1306_FONT_INCLUDE_LOWERCASE == 0)
 				if (c > 122) {
 					/* 
 					 * this puts the open brace at the ASCII position of
@@ -203,6 +217,7 @@ void SSD1306_PutChar( char c )
 					 */
 					c -= 26;
 				}
+				#endif
 				/*
 				 * align the space character at ASCII 0, since the control
 				 * chars are omitted from the font
@@ -220,48 +235,47 @@ void SSD1306_PutChar( char c )
 			 * bitmap will be copied. We add one to this value to account
 			 * for the command byte stored at index 0.
 			 */
-			ypos = ((SSD1306_CursorX*6) + (SSD1306_CursorY*128)) + 1;
+			ypos = ((SSD1306_CursorX*6) + (SSD1306_CursorY*128))+1;
 			memcpy((void*)&SSD1306_Raster[ypos], (void*)&SSD1306_Font[xpos], 5 );
 			SSD1306_Raster[ypos+5] = 0;			
 		}
 		/* move the cursor to the next location */
 		SSD1306_CursorX++;
-		if (SSD1306_CursorX > SSD1306_DISPLAY_WIDTH) {
+		if (SSD1306_CursorX >= (SSD1306_DISPLAY_WIDTH/6)) {
 			SSD1306_CursorX = 0;
 			SSD1306_CursorY++;
 		}
 	}
 }
 /* ------------------------------------------------------------------------ */
-void SSD1306_BigPutChar(char c)
+void SSD1306_SizedPutChar(char c, uint8 xsize, uint8 ysize)
 {
 	int xpos;
 	int ypos;
 	int idx;
 	uint8 mask;
 	uint8 pixel;
-	uint8 row1[10];
-	uint8 row2[10];
+	uint8 bmp[24];
 	
 	/*
 	 * Render a character on the display, then update the cursor location
 	 * to the next available space.
 	 */
-	if (SSD1306_CursorY > 3) {
+	if (SSD1306_CursorY >= (SSD1306_DISPLAY_HEIGHT/8)) {
 		/*
 		 * The new character is giong to display below the bottom of the
 		 * display, so, scroll the display up one line, and clear the bottom
 		 * row. Lastly, set the cursor y location to the bottom row.
 		 */
-		/* todo: Scroll up raster data */
-		SSD1306_CursorY = 3;
+		SSD1306_ScrollUp((ysize!=0)?2:1);
+		SSD1306_CursorY = (SSD1306_DISPLAY_HEIGHT/8)- ((ysize!=0)?2:1);
 	}
 	/* 
 	 * Check for CR and NL characters. These are non-printable (even though
 	 * there is a font icon for them), and control the cursor location.
 	 */
 	if (c == '\n') {
-		SSD1306_CursorY++;
+		SSD1306_CursorY += (ysize!=0)?2:1;
 		SSD1306_CursorX = 0;
 	}
 	else if (c == '\r') {
@@ -302,15 +316,52 @@ void SSD1306_BigPutChar(char c)
 			/*
 			 * Expand the font in to the bitmap that is to be copied to the
 			 * raster buffer.
+			 * The first thing to do is to copy the column data to make the
+			 * font wider.
 			 */
-			for (idx=0;idx<5;idx++) {
-				pixel = 0x03;
-				for (mask=1;mask!=0x10;mask <<= 1) {
-					row1[idx<<1]     |= (SSD1306_Font[idx]&mask)?pixel:0;
-					row1[(idx<<1)+1] |= (SSD1306_Font[idx]&mask)?pixel:0;
-					row2[idx<<1]     |= (SSD1306_Font[idx]&(mask<<4))?pixel:0;
-					row2[(idx<<1)+1] |= (SSD1306_Font[idx]&(mask<<4))?pixel:0;
-					pixel <<= 2;
+			memset((void*)&bmp[0],0,24);
+			if (xsize != 0) {
+				for (idx=0;idx<5;idx++) {
+					bmp[(idx<<1)] = SSD1306_Font[xpos+idx];
+					bmp[(idx<<1)+1] = SSD1306_Font[xpos+idx];
+				}
+			}
+			else {
+				for (idx=0;idx<5;idx++) {
+					bmp[idx] = SSD1306_Font[xpos+idx];
+				}
+			}				
+			/*
+			 * now that the font was stretched in the X direction, stretch
+			 * it in the Y direction as well.  this is a little harder since
+			 * we now have to expand the bits in to the upper portion of the
+			 * bitmap.
+			 */
+			if (ysize != 0) {
+				for(idx=0;idx<12;++idx) {
+					pixel = 0xC0;
+					for (mask=0x80;mask!=0x08;mask>>=1) {
+						if (bmp[idx]&mask) {
+							bmp[idx+12] |= pixel;
+						}
+						pixel >>= 2;
+					}
+				}
+				/*
+				 * and now that the lower portion of the letter was expanded,
+				 * spread the upper bits in the same manner
+				 */
+				for(idx=0;idx<12;++idx) {
+					pixel = 0xC0;
+					ypos = bmp[idx];
+					for(mask=0x08;mask!=0;mask>>=1) {
+						ypos &= ~pixel;
+						if (bmp[idx]&mask) {
+							ypos |= pixel;
+						}
+						pixel >>= 2;
+					}
+					bmp[idx] = ypos;
 				}
 			}
 			/*
@@ -319,22 +370,19 @@ void SSD1306_BigPutChar(char c)
 			 * bitmap will be copied. We add one to this value to account
 			 * for the command byte stored at index 0.
 			 */
-			ypos = ((SSD1306_CursorX*6) + (SSD1306_CursorY*128)) + 1;
-			memcpy((void*)&SSD1306_Raster[ypos], (void*)&row1[0], 10 );
-			memcpy((void*)&SSD1306_Raster[ypos+128], (void*)&row2[0],10);
-			SSD1306_Raster[ypos+11]  = 0;
-			SSD1306_Raster[ypos+12]  = 0;
-			SSD1306_Raster[ypos+139] = 0;
-			SSD1306_Raster[ypos+140] = 0;
+			ypos = ((SSD1306_CursorX*6) + (SSD1306_CursorY*128))+1;
+			memcpy((void*)&SSD1306_Raster[ypos], (void*)&bmp[0], (xsize!=0)?12:6 );
+			if (ysize != 0) {
+				memcpy((void*)&SSD1306_Raster[ypos+128], (void*)&bmp[12],(xsize!=0)?12:6);
+			}
 		}
 		
 		/* move the cursor to the next location */
-		SSD1306_CursorX += 2;
-		if (SSD1306_CursorX > SSD1306_DISPLAY_WIDTH) {
+		SSD1306_CursorX += (xsize!=0)?2:1;
+		if (SSD1306_CursorX >= (SSD1306_DISPLAY_WIDTH/6)) {
 			SSD1306_CursorX = 0;
-			SSD1306_CursorY += 2;
+			SSD1306_CursorY += (ysize!=0)?2:1;
 		}
-
 	}
 }
 /* ------------------------------------------------------------------------ */
@@ -343,13 +391,14 @@ void SSD1306_PrintString( char *str )
 	int idx = 0;
 	int cmdix = 0;
 	uint8 mode;
-	uint8 big;
+	uint8 expandX,expandY;
 	char cmd[21];
 	int value;
 	
 	/* default the mode to "Normal output" */
 	mode = 0;
-	big = 0; /* default to normal sized fonts */
+	expandX = 0; /* default to normal sized fonts */
+	expandY = 0;
 	
 	/*
 	 * Loop through the string and process commands or, output the character
@@ -479,11 +528,21 @@ void SSD1306_PrintString( char *str )
 					}
 					SSD1306_CursorX = value;				
 				}
-				else if (strncmpi(cmd,"large",5) == 0) {
-					big = 1;
+				else if (strncmpi(cmd,"big",5) == 0) {
+					expandX = 1;
+					expandY = 1;
+				}
+				else if (strncmpi(cmd,"wide",4) == 0) {
+					expandX = 1;
+					expandY = 0;
+				}
+				else if (strncmpi(cmd,"tall",4) == 0) {
+					expandX = 0;
+					expandY = 1;
 				}
 				else if (strncmpi(cmd,"normal",6) == 0) {
-					big = 0;
+					expandX = 0;
+					expandY = 0;
 				}
 				cmdix = 0;
 				memset((void*)&cmd[0],0,21);
@@ -503,8 +562,8 @@ void SSD1306_PrintString( char *str )
 			mode = 1;
 		}
 		else {
-			if (big != 0) {
-				SSD1306_BigPutChar( str[idx] );
+			if (( expandX != 0)||(expandY != 0) ) {
+				SSD1306_SizedPutChar( str[idx],expandX,expandY );
 			}
 			else {
 				SSD1306_PutChar( str[idx] );

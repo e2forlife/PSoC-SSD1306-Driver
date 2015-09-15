@@ -15,6 +15,9 @@
 
 int main()
 {
+	uint8 c;
+	char str[21];
+	
 	I2C_Start();
 	OLED_RST_Write(0);
 	CyDelay(10);
@@ -27,14 +30,14 @@ int main()
 	 * Initialize the I2C port and the diplay driver
 	 */
 	SSD1306_Start();
-	
-	/* Print a message on the display */
-	SSD1306_PrintString("Hello World!");
 	SSD1306_Refresh();
-
+	SSD1306_PrintString("{tall}Hello!\n{wide}Hello\n{normal}Hola!");
+	c = 0;
     for(;;)
     {
-        /* Place your application code here. */
+		/* Print a message on the display */
+//		SSD1306_PutChar((char)c++);
+		SSD1306_Refresh();
     }
 }
 
